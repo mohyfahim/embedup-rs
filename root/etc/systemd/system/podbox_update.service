@@ -1,0 +1,14 @@
+[Unit]
+Description=Podbox Update Service
+After=network.target
+
+[Service]
+User=podbox
+Group=podbox
+Environment="RUST_LOG=debug"
+ExecStart=/opt/podbox_update
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

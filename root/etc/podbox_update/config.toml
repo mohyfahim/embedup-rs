@@ -1,0 +1,18 @@
+service_name = "podbox_update"
+current_version_file = "/opt/podbox_update/version.txt" 
+
+# API Endpoints
+update_check_api_url = "https://boxapi.sandpod.ir/v3/device/update" 
+status_report_api_url = "https://boxapi.sandpod.ir/v3/device/status" 
+
+# Timing
+poll_interval_seconds = 300
+
+download_base_dir = "/tmp/updater_downloads" # Base for temporary download folders
+
+decryption_key_hex = "###"
+
+# Update Script
+update_script_name = "update.sh"
+
+device_token = "###"
