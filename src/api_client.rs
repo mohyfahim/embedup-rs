@@ -2,10 +2,10 @@ use crate::config::Config;
 use crate::error::UpdateError;
 use reqwest::{
     header::{ACCEPT_RANGES, CONTENT_LENGTH, RANGE},
-    Client,
+    Client, ClientBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path, time::Duration};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -39,7 +39,11 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn new(config: Config, token: String) -> Self {
         ApiClient {
-            client: Client::new(),
+            client: ClientBuilder::new()
+                .connect_timeout(Duration::from_secs(10))
+                .read_timeout(Duration::from_secs(10))
+                .build()
+                .unwrap(),
             config,
             token,
         }
@@ -191,11 +195,15 @@ impl ApiClient {
                 ))
             })?;
 
+        tracing::debug!("{:?}", response.headers());
         let mut stream = response.bytes_stream();
-
         while let Some(item) = futures_util::StreamExt::next(&mut stream).await {
             let chunk = item.map_err(|e| {
-                UpdateError::DownloadError(format!("Error reading download stream: {}", e))
+                if e.to_string() == "error decoding response body" {
+                    UpdateError::TimeoutError
+                } else {
+                    UpdateError::DownloadError(format!("Error reading download stream: {}", e))
+                }
             })?;
             dest_file.write_all(&chunk).await.map_err(|e| {
                 UpdateError::FileIOError(format!("Failed to write chunk to file: {}", e))

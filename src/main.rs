@@ -2,6 +2,7 @@ mod api_client;
 mod config;
 mod error;
 
+use aes_gcm::aead::rand_core::le;
 use api_client::ApiClient;
 use config::{get_current_version, Config};
 use error::UpdateError;
@@ -18,6 +19,7 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
         .map_err(|e| UpdateError::FileSystemError(format!("Failed to open zipped files: {}", e)))?;
 
     let mut archive = zip::ZipArchive::new(f).unwrap();
+    tracing::debug!("archive len {}", archive.len());
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
@@ -30,23 +32,9 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
             None => continue,
         };
 
-        {
-            let comment = file.comment();
-            if !comment.is_empty() {
-                println!("File {i} comment: {comment}");
-            }
-        }
-
         if file.is_dir() {
-            println!("File {} extracted to \"{}\"", i, out_path.display());
             fs::create_dir_all(&out_path).unwrap();
-        } else {
-            println!(
-                "File {} extracted to \"{}\" ({} bytes)",
-                i,
-                out_path.display(),
-                file.size()
-            );
+        } else {    
             if let Some(p) = out_path.parent() {
                 if !p.exists() {
                     fs::create_dir_all(p).unwrap();
@@ -66,6 +54,8 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
             }
         }
     }
+
+    tracing::debug!("unzipping done");
 
     Ok(())
 }
@@ -140,7 +130,7 @@ pub fn run_update_script(
 }
 
 async fn run_update_cycle(
-    cfg: &Config,
+    cfg: &mut Config,
     api: &ApiClient,
     current_version: i32,
 ) -> Result<(), UpdateError> {
@@ -213,8 +203,14 @@ async fn run_update_cycle(
                                 .ok();
                             }
                         }
+                        cfg.poll_interval_seconds = 300;
                     }
                     Err(e) => {
+                        if e.to_string() == "Timeout error" {
+                            cfg.poll_interval_seconds = 1;
+                        } else {
+                            cfg.poll_interval_seconds = 300;
+                        }
                         tracing::error!("error in downloading file: {}", e);
                     }
                 }
@@ -242,8 +238,8 @@ async fn main() {
 
     tracing::info!("Embedded Updater starting...");
     let config_path =
-        env::var("PODBOX_UPDATE_CONF").unwrap_or("/etc/podbox-update/config.toml".to_string()); // Or get from command line arguments
-    let config = match Config::load(&config_path) {
+        env::var("PODBOX_UPDATE_CONF").unwrap_or("/etc/podbox_update/config.toml".to_string()); // Or get from command line arguments
+    let mut config = match Config::load(&config_path) {
         Ok(c) => c,
         Err(e) => {
             tracing::error!("Failed to load configuration: {}", e);
@@ -260,7 +256,7 @@ async fn main() {
     let api_client = ApiClient::new(config.clone(), token);
     loop {
         tracing::info!("Starting update check cycle...");
-        if let Err(e) = run_update_cycle(&config, &api_client, current_version).await {
+        if let Err(e) = run_update_cycle(&mut config, &api_client, current_version).await {
             tracing::error!("Update cycle ended with error: {}", e);
             // Decide on error recovery strategy here. For now, we just log and continue.
         }

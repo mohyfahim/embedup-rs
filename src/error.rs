@@ -18,6 +18,8 @@ pub enum UpdateError {
     NoUpdateAvailable,
     #[error("Download error: {0}")]
     DownloadError(String),
+    #[error("Timeout error")]
+    TimeoutError,
     #[error("Head error: {0}")]
     HeadError(String),
     #[error("Decryption error: {0}")]
