@@ -1,8 +1,6 @@
 mod api_client;
 mod config;
 mod error;
-
-use aes_gcm::aead::rand_core::le;
 use api_client::ApiClient;
 use config::{get_current_version, Config};
 use error::UpdateError;
@@ -34,7 +32,7 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
 
         if file.is_dir() {
             fs::create_dir_all(&out_path).unwrap();
-        } else {    
+        } else {
             if let Some(p) = out_path.parent() {
                 if !p.exists() {
                     fs::create_dir_all(p).unwrap();
@@ -61,6 +59,7 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
 }
 
 pub fn run_update_script(
+    cfg: &Config,
     script_path: &Path,
     working_dir: &Path, // The script should run from within its extracted directory
 ) -> Result<(), UpdateError> {
@@ -96,6 +95,7 @@ pub fn run_update_script(
     tracing::info!("Set executable permission on {:?}", script_path);
 
     let output = Command::new(script_path)
+        .env("DB_PASSWORD", &cfg.db_password)
         .current_dir(working_dir) // Run the script from its own directory
         .output()
         .map_err(|e| {
@@ -183,7 +183,7 @@ async fn run_update_cycle(
 
                             let script_path = out_extracted_path.join(&cfg.update_script_name);
                             if let Err(UpdateError::ScriptError(e)) =
-                                run_update_script(&script_path, &out_extracted_path)
+                                run_update_script(&cfg, &script_path, &out_extracted_path)
                             {
                                 api.report_status(
                                     current_version,
@@ -226,6 +226,14 @@ async fn run_update_cycle(
     Ok(())
 }
 
+fn reset_ntp_service() -> Result<(), UpdateError> {
+    let _ = Command::new("/usr/bin/sudo")
+        .args(["/usr/bin/systemctl", "restart", "ntp"])
+        .output()
+        .map_err(|e| UpdateError::ScriptError(format!("Failed to restart ntp service: {}", e)))?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -248,13 +256,18 @@ async fn main() {
     };
     tracing::info!("Configuration loaded: {:?}", config.service_name);
 
-    let current_version = get_current_version(&config).unwrap_or(0);
-    tracing::info!("Current service version: {}", current_version);
-
     let token = config.device_token.clone();
 
     let api_client = ApiClient::new(config.clone(), token);
+
     loop {
+        if let Err(e) = reset_ntp_service() {
+            tracing::warn!("ntp reset error: {}", e);
+        }
+
+        let current_version = get_current_version(&config).unwrap_or(0);
+        tracing::info!("Current service version: {}", current_version);
+
         tracing::info!("Starting update check cycle...");
         if let Err(e) = run_update_cycle(&mut config, &api_client, current_version).await {
             tracing::error!("Update cycle ended with error: {}", e);

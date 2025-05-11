@@ -13,6 +13,7 @@ pub struct Config {
     pub download_base_dir: PathBuf,
     pub decryption_key_hex: String,
     pub update_script_name: String,
+    pub db_password: String,
     pub device_token: String,
 }
 

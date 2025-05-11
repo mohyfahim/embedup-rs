@@ -1,5 +1,7 @@
 #!/bin/bash
 
+VERSION=2
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 SRC_DIR="$SCRIPT_DIR""/update"
@@ -42,17 +44,19 @@ tests() {
             return 1
         }
 
+    sleep 10
+
     echo "[tests] checking HTTP endpoints"
     local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
-    [ "$code" = "200" ] &&
-        echo "  backend health: 200" ||
+    code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/)
+    [ "$code" = "404" ] &&
+        echo "  backend health: 404" ||
         {
             echo "  backend health: $code"
             return 1
         }
 
-    code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
+    code=$(curl -s -o /dev/null -w "%{http_code}" https://podbox.plus/)
     [ "$code" = "200" ] &&
         echo "  PWA root: 200" ||
         {
@@ -98,6 +102,7 @@ update_backend() {
     BACKEND_OUT_DIR="$DEST_DIR/back"
 
     # TODO: handle env updates
+    systemctl stop podbox
 
     rm -rf $BACKEND_OUT_DIR
     mv $BACKEND_SRC_DIR $BACKEND_OUT_DIR
@@ -135,6 +140,10 @@ update_contents() {
 }
 
 
+update_version() {
+    echo "$VERSION" > /etc/podbox_update/version.txt
+}
+
 main() {
     echo "[deploy] starting at $(date)"
     backup
@@ -142,7 +151,7 @@ main() {
     update_pwa
     update_db
     update_contents
-
+    update_version
     if ! tests; then
         echo "[deploy] tests failed, rolling back"
         rollback
