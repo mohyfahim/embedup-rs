@@ -3,3 +3,4 @@ podbox ALL=(ALL) NOPASSWD: /usr/bin/mount *
 podbox ALL=(ALL) NOPASSWD: /usr/bin/umount *
 podbox ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /mnt/sdcard
 podbox ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart ntp
+podbox ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart podbox_update
