@@ -16,11 +16,15 @@ fn unzip_update(p: &Path, o: &Path) -> Result<(), UpdateError> {
     let f = fs::File::open(p)
         .map_err(|e| UpdateError::FileSystemError(format!("Failed to open zipped files: {}", e)))?;
 
-    let mut archive = zip::ZipArchive::new(f).unwrap();
+    let mut archive = zip::ZipArchive::new(f)
+        .map_err(|e| UpdateError::ArchiveError(format!("Failed to extract zipped files: {}", e)))?;
+
     tracing::debug!("archive len {}", archive.len());
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).unwrap();
+        let mut file = archive.by_index(i).map_err(|e| {
+            UpdateError::ArchiveError(format!("Failed to extract zipped files: {}", e))
+        })?;
         let out_path = match file.enclosed_name() {
             Some(path) => {
                 let mut p = PathBuf::from(o);
@@ -168,7 +172,16 @@ async fn run_update_cycle(
                         let mut out_extracted_path = PathBuf::from(&cfg.download_base_dir);
                         out_extracted_path.push(file_name);
                         if let Err(e) = unzip_update(&download_path, &out_extracted_path) {
-                            tracing::error!("error in unzipping file: {}", e);
+                            match &e {
+                                UpdateError::ArchiveError(m) => {
+                                    tracing::error!("error in unzipping file: {}", m);
+                                    fs::remove_file(&download_path)?;
+                                    fs::remove_dir_all(&out_extracted_path)?;
+                                }
+                                _ => {
+                                    tracing::error!("unknown error in extracting files ");
+                                }
+                            }
                         } else {
                             tracing::debug!("file is extracted successfully");
                             api.report_status(
@@ -206,10 +219,13 @@ async fn run_update_cycle(
                         cfg.poll_interval_seconds = 300;
                     }
                     Err(e) => {
-                        if e.to_string() == "Timeout error" {
-                            cfg.poll_interval_seconds = 1;
-                        } else {
-                            cfg.poll_interval_seconds = 300;
+                        match &e {
+                            UpdateError::TimeoutError => {
+                                cfg.poll_interval_seconds = 1;
+                            }
+                            _ => {
+                                cfg.poll_interval_seconds = 300;
+                            }
                         }
                         tracing::error!("error in downloading file: {}", e);
                     }

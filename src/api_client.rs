@@ -1,11 +1,11 @@
 use crate::config::Config;
 use crate::error::UpdateError;
 use reqwest::{
-    header::{ACCEPT_RANGES, CONTENT_LENGTH, RANGE},
+    header::{ACCEPT_RANGES, RANGE},
     Client, ClientBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Write, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -19,7 +19,6 @@ pub struct UpdateInfo {
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdateErr {
     pub message: String,
-    pub description: String,
 }
 
 #[derive(Serialize, Debug)]
